@@ -25,3 +25,6 @@ data/index/
 .DS_Store
 .idea/
 .vscode/
+
+# Local, gitignored working context for AI agents
+.agent-context.md

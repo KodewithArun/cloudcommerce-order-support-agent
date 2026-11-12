@@ -1,9 +1,12 @@
-"""Simple smoke test for the configured LLM and embedding providers.
+"""Live smoke test for the configured LLM and embedding providers.
 
-Run with ``pytest tests/test_provider_smoke.py -s`` to see both outputs.
+Skipped by default because it calls the network and downloads the embedding
+model. Run with: ``RUN_PROVIDER_SMOKE=1 pytest tests/test_provider_smoke.py -s``.
 """
 
 from __future__ import annotations
+
+import os
 
 import pytest
 
@@ -12,6 +15,11 @@ from app.providers import get_chat_model, get_embeddings
 
 settings = get_settings()
 has_api_key = bool(getattr(settings, f"{settings.llm_provider.value}_api_key"))
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_PROVIDER_SMOKE") != "1",
+    reason="Set RUN_PROVIDER_SMOKE=1 to run live provider tests",
+)
 
 
 @pytest.mark.skipif(

@@ -9,6 +9,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -56,6 +57,12 @@ def build_agent(
 
 
 @lru_cache(maxsize=1)
+def get_checkpointer() -> BaseCheckpointSaver:
+    """Return the shared in-memory checkpointer."""
+    return MemorySaver()
+
+
+@lru_cache(maxsize=1)
 def get_agent() -> CompiledStateGraph:
-    """Return the shared agent configured from the environment."""
-    return build_agent()
+    """Return the shared agent configured from the environment with conversation memory."""
+    return build_agent(checkpointer=get_checkpointer())

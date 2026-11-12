@@ -88,7 +88,9 @@ class Settings(BaseSettings):
     rag_chunk_size: int = 700
     rag_chunk_overlap: int = 120
     rag_top_k: int = 4
-    rag_min_score: float = 0.15
+    rag_min_score: float = 0.35
+    chroma_persist_path: str = "data/chroma"
+    chroma_collection_name: str = "policies"
 
     # ── Business policy ───────────────────────────────────────────────
     return_window_days: int = 14
@@ -98,6 +100,7 @@ class Settings(BaseSettings):
     # ── Storage ───────────────────────────────────────────────────────
     database_path: str = "data/agent.sqlite3"
     tool_log_path: str = "logs/tool_calls.jsonl"
+    policy_docs_path: str = "data/policies"
 
     # ── Orders service resilience ─────────────────────────────────────
     orders_simulate_failure: str | None = None  # "timeout" | "error" | None

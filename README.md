@@ -107,11 +107,70 @@ RUN_PROVIDER_SMOKE=1 uv run pytest tests/test_provider_smoke.py -s
 
 ---
 
+## Feature 3: Orders Data, Policy Documents and RAG
+
+### What I did
+
+- Added mock order data in `data/orders.json`
+- Added four policy documents in `data/policies/`:
+  returns, shipping, warranty and cancellations
+- Loaded Markdown with `TextLoader`
+- Split by Markdown headers with `MarkdownHeaderTextSplitter`, then by size
+  with `RecursiveCharacterTextSplitter`
+- Indexed chunks in persistent Chroma at `data/chroma`
+- Retrieved with a score-threshold retriever
+- Built a retrieve-then-generate chain with `create_stuff_documents_chain`
+  and `create_retrieval_chain`
+- Added source citations like `returns.md › Return window`
+- Returned a deterministic fallback when no policy matches
+- Added 9 offline RAG tests and an end-to-end notebook
+
+### Usage
+
+```python
+from app.rag import answer_policy_question, format_citations
+
+response = answer_policy_question("How long do refunds take?")
+print(response["answer"])
+print(format_citations(response["context"]))
+```
+
+Uncovered questions return:
+
+```text
+I don't know based on the available policies.
+```
+
+### Configure
+
+```bash
+POLICY_DOCS_PATH=data/policies
+RAG_CHUNK_SIZE=700
+RAG_CHUNK_OVERLAP=120
+RAG_TOP_K=4
+RAG_MIN_SCORE=0.35
+CHROMA_PERSIST_PATH=data/chroma
+CHROMA_COLLECTION_NAME=policies
+```
+
+### Test
+
+```bash
+uv run pytest tests/test_rag.py -q
+```
+
+### Notebook
+
+Open `app/rag/rag_demo.ipynb` to inspect loading, indexing, retrieval,
+relevance scores, answers and citations interactively.
+
+---
+
 ## Status
 
 - [x] Feature 1: Project setup and minimal FastAPI service
 - [x] Feature 2: Provider abstractions (Groq + Hugging Face + offline fallback)
-- [ ] Feature 3: Orders data, policy documents and RAG with citations
+- [x] Feature 3: Orders data, policy documents and RAG with citations
 - [ ] Feature 4: Order tools and safety guards
 - [ ] Feature 5: LangGraph agent
 - [ ] Feature 6: Conversation memory and `POST /chat`

@@ -18,6 +18,7 @@ htmlcov/
 # Runtime artefacts
 logs/
 data/index/
+data/chroma/
 *.sqlite3
 *.db
 

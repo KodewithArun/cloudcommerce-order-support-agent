@@ -28,10 +28,22 @@ class ChatRequest(BaseModel):
     )
 
 
+class TokenUsage(BaseModel):
+    """Token consumption metrics for a model interaction."""
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
 class ChatResponse(BaseModel):
     """Outgoing chat response."""
 
     session_id: str = Field(..., description="The conversation session identifier.")
     customer_id: str = Field(..., description="The customer identifier.")
     response: str = Field(..., description="The agent's reply to the user.")
+    tokens: TokenUsage | None = Field(
+        default=None,
+        description="Total tokens consumed across all model generation steps in this turn.",
+    )
 

@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.chat.models import ChatRequest, ChatResponse
+from app.chat.models import ChatRequest, ChatResponse, TokenUsage
 from app.chat.service import ChatService, CustomerMismatchError, get_chat_service
 
 router = APIRouter(tags=["chat"])
@@ -39,8 +39,20 @@ def chat_endpoint(
             detail=str(exc),
         ) from exc
 
+    tokens = service.get_last_token_usage()
+    token_usage = (
+        TokenUsage(
+            prompt_tokens=tokens.get("prompt_tokens", 0),
+            completion_tokens=tokens.get("completion_tokens", 0),
+            total_tokens=tokens.get("total_tokens", 0),
+        )
+        if tokens.get("total_tokens")
+        else None
+    )
+
     return ChatResponse(
         session_id=request.session_id,
         customer_id=request.customer_id,
         response=response_text,
+        tokens=token_usage,
     )

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph.state import CompiledStateGraph
 
 from app.agent.graph import get_agent
+from app.audit import AuditCallbackHandler
 
 
 class CustomerMismatchError(Exception):
@@ -40,6 +42,7 @@ class ChatService:
 
     def __init__(self, agent: CompiledStateGraph | None = None) -> None:
         self._agent = agent
+        self.last_token_usage: dict[str, int] = {}
 
     @property
     def agent(self) -> CompiledStateGraph:
@@ -47,6 +50,10 @@ class ChatService:
         if self._agent is None:
             self._agent = get_agent()
         return self._agent
+
+    def get_last_token_usage(self) -> dict[str, int]:
+        """Return the token consumption of the most recent turn."""
+        return self.last_token_usage
 
     def chat(self, *, session_id: str, customer_id: str, message: str) -> str:
         """Run one conversation turn and return the assistant response.
@@ -62,7 +69,12 @@ class ChatService:
         Raises:
             CustomerMismatchError: If the session was already created by another customer.
         """
-        config: dict[str, Any] = {"configurable": {"thread_id": session_id}}
+        turn_start = time.perf_counter()
+        handler = AuditCallbackHandler(session_id=session_id, customer_id=customer_id)
+        config: dict[str, Any] = {
+            "configurable": {"thread_id": session_id},
+            "callbacks": [handler],
+        }
 
         # Enforce customer data isolation across sessions
         snapshot = self.agent.get_state(config)
@@ -81,6 +93,41 @@ class ChatService:
             config=config,
         )
 
+        self.last_token_usage = handler.get_token_usage()
+        from app.audit import log_audit_event
+
+        log_audit_event(
+            "chat_turn",
+            {
+                "session_id": session_id,
+                "customer_id": customer_id,
+                "duration_ms": round((time.perf_counter() - turn_start) * 1000, 2),
+                "tokens": self.last_token_usage,
+            },
+        )
+
+        # Check for LangGraph dynamic human-in-the-loop interrupts (e.g. refund approval > $100)
+        if "__interrupt__" in result and result["__interrupt__"]:
+            interrupt_payload = result["__interrupt__"][0].value
+            order_id = interrupt_payload.get("order_id", "order")
+            amount = interrupt_payload.get("amount", 0.0)
+            return (
+                f"Refund request of ${amount:.2f} for order {order_id} exceeds $100 "
+                "and requires manager approval. Approval request submitted."
+            )
+
+        final_message = result["messages"][-1]
+        return extract_message_text(final_message)
+
+    def resume(self, *, session_id: str, decision: str) -> str:
+        """Resume an interrupted LangGraph session with a human approval decision."""
+        from langgraph.types import Command
+
+        config: dict[str, Any] = {
+            "configurable": {"thread_id": session_id},
+            "callbacks": [AuditCallbackHandler(session_id=session_id)],
+        }
+        result = self.agent.invoke(Command(resume=decision), config=config)
         final_message = result["messages"][-1]
         return extract_message_text(final_message)
 

@@ -293,6 +293,75 @@ uv run pytest tests/test_chat.py -q
 
 ---
 
+## Feature 7: Approval Flow, Audit Logging and Failure Handling
+
+### What I did
+
+- Integrated official LangGraph Human-in-the-Loop (`interrupt()` and `Command(resume=...)`):
+  - Refund requests over $100 automatically pause graph execution via dynamic interrupt and enter `refund_pending_approval` status.
+- Added FastAPI approval endpoints:
+  - `POST /approve`: Approves or rejects pending high-value refunds and resumes the paused conversation thread.
+  - `GET /approvals/pending`: Lists all orders currently awaiting manager approval.
+- Implemented professional rotating audit logger (`app/audit/`):
+  - Configured `RotatingFileHandler` with `maxBytes=5MB` (5,242,880 bytes) and `backupCount=5` to prevent unbounded log growth.
+  - Captures structured JSONL records: timestamp, session ID, customer ID, tool name, arguments, execution duration in milliseconds, outcomes, token usage, and token generation speed (tps).
+- Added resilient orders-service failure recovery:
+  - Configured `ToolNode(handle_tool_errors=...)` so network/database errors return friendly customer messages rather than crashing with HTTP 500.
+- Added 7 comprehensive tests in `tests/test_feature7.py` covering HITL interrupts, `/approve`, log rotation, and failure resilience.
+
+### Endpoints
+
+| Method | Path | Request Body | Description |
+|--------|------|--------------|-------------|
+| POST | `/approve` | `{"order_id": "...", "decision": "approve", "session_id": "..."}` | Approve or reject a refund over $100 |
+| GET | `/approvals/pending` | None | List orders currently awaiting approval |
+
+### Usage
+
+1. Request a refund over $100 (e.g. order `B200` at $220.00):
+```bash
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "session-102",
+    "customer_id": "C2",
+    "message": "I would like a refund for order B200"
+  }'
+```
+
+Response:
+```json
+{
+  "session_id": "session-102",
+  "customer_id": "C2",
+  "response": "Refund request of $220.00 for order B200 exceeds $100 and requires manager approval. Approval request submitted."
+}
+```
+
+2. Manager checks pending approvals:
+```bash
+curl http://127.0.0.1:8000/approvals/pending
+```
+
+3. Manager approves the refund via `POST /approve`:
+```bash
+curl -X POST http://127.0.0.1:8000/approve \
+  -H "Content-Type: application/json" \
+  -d '{
+    "order_id": "B200",
+    "decision": "approve",
+    "session_id": "session-102"
+  }'
+```
+
+### Test
+
+```bash
+uv run pytest tests/test_feature7.py -q
+```
+
+---
+
 ## Status
 
 - [x] Feature 1: Project setup and minimal FastAPI service
@@ -301,6 +370,6 @@ uv run pytest tests/test_chat.py -q
 - [x] Feature 4: Order tools and safety guards
 - [x] Feature 5: LangGraph agent
 - [x] Feature 6: Conversation memory and `POST /chat`
-- [ ] Feature 7: Approval flow, audit log and failure handling
+- [x] Feature 7: Approval flow, audit log and failure handling
 - [ ] Feature 8: Conversation eval suite
 - [ ] Feature 9: Final README with architecture diagram and learnings

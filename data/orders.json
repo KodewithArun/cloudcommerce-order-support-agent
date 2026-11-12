@@ -30,5 +30,13 @@
     "price": 220.0,
     "status": "delivered",
     "delivered_date": "2026-09-10"
+  },
+  {
+    "order_id": "B201",
+    "customer_id": "C2",
+    "item": "Mechanical Keyboard",
+    "price": 140.0,
+    "status": "delivered",
+    "delivered_date": "2026-11-08"
   }
 ]

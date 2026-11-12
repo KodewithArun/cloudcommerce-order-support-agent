@@ -2,7 +2,13 @@
 
 from app.orders.models import Order, OrderStatus
 from app.orders.repository import OrderRepository, get_order_repository
-from app.orders.service import ActionResult, OrderService, get_order_service
+from app.orders.service import (
+    ActionResult,
+    OrderService,
+    OrderServiceError,
+    OrderServiceUnavailableError,
+    get_order_service,
+)
 from app.orders.tools import (
     ORDER_TOOLS,
     cancel_order,
@@ -17,6 +23,8 @@ __all__ = [
     "Order",
     "OrderRepository",
     "OrderService",
+    "OrderServiceError",
+    "OrderServiceUnavailableError",
     "OrderStatus",
     "cancel_order",
     "get_order",

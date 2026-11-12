@@ -51,8 +51,42 @@ def request_refund(order_id: str, customer_id: CustomerId) -> str:
     """Request a refund for a delivered order for the current customer.
 
     Only delivered orders inside the return window are eligible.
+    Refunds over $100 require manager approval.
     """
-    return get_order_service().request_refund(order_id, customer_id).message
+    service = get_order_service()
+    order = service.get_order(order_id, customer_id)
+    if order is not None and order.price > 100.0:
+        action_result = service.request_refund(order_id, customer_id)
+        if not action_result.ok:
+            return action_result.message
+
+        try:
+            from langgraph.types import interrupt
+
+            decision = interrupt(
+                {
+                    "action": "refund_approval",
+                    "order_id": order_id,
+                    "customer_id": customer_id,
+                    "amount": order.price,
+                    "reason": "Refund over $100 requires manager approval.",
+                }
+            )
+            if str(decision).lower() in ("approve", "approved"):
+                service.approve_refund(order_id, decision="approve")
+                return (
+                    f"Refund request of ${order.price:.2f} for order {order_id} "
+                    "has been approved by management and processed."
+                )
+            service.approve_refund(order_id, decision="reject")
+            return (
+                f"Refund request of ${order.price:.2f} for order {order_id} "
+                "was rejected by management."
+            )
+        except RuntimeError:
+            return action_result.message
+
+    return service.request_refund(order_id, customer_id).message
 
 
 ORDER_TOOLS = [get_order, list_orders, cancel_order, request_refund]

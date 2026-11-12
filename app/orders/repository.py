@@ -47,6 +47,14 @@ class OrderRepository:
             key=lambda order: order.order_id,
         )
 
+    def get_by_id(self, order_id: str) -> Order | None:
+        """Return an order by ID without customer scoping (internal/manager use)."""
+        return self._orders.get(order_id)
+
+    def all(self) -> list[Order]:
+        """Return all orders across all customers (internal/manager use)."""
+        return list(self._orders.values())
+
     def set_status(self, order_id: str, status: OrderStatus) -> Order:
         """Replace an order's status and return the updated model."""
         updated = self._orders[order_id].model_copy(update={"status": status})

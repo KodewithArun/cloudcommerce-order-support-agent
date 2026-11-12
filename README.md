@@ -24,6 +24,68 @@ and graceful handling of orders-service failures.
 
 ---
 
+## Architecture Overview
+
+```mermaid
+flowchart TD
+    subgraph Clients["Clients"]
+        WebUI["Streamlit Web App (Port 8501)"]
+        APIClient["API Consumers / cURL"]
+    end
+
+    subgraph FastAPILayer["FastAPI Application (Port 8000)"]
+        ChatRouter["POST /chat"]
+        ApprovalRouter["POST /approve | GET /approvals/pending"]
+        HealthRouter["GET /health"]
+    end
+
+    subgraph ServiceLayer["Core Services"]
+        ChatService["ChatService (Session Validation & State Orchestration)"]
+        OrderService["OrderService (Policy Validation & State Mutation)"]
+    end
+
+    subgraph LangGraphAgent["LangGraph StateGraph Agent"]
+        AssistantNode["Assistant Node (LLM: Groq / OpenAI / Anthropic)"]
+        ToolCondition{"tools_condition"}
+        ToolNode["ToolNode (with Failure Handling)"]
+        Checkpointer[("MemorySaver Checkpointer (Thread State)")]
+    end
+
+    subgraph ToolsAndRAG["Agent Tools & Knowledge Base"]
+        OrderTools["Order Tools: get_order, list_orders, cancel_order, request_refund"]
+        HITLInterrupt["HITL Interrupt (Refund > $100)"]
+        RAGRetriever["search_policies (ChromaDB + all-MiniLM-L6-v2)"]
+        PolicyDocs[("Markdown Policy Docs (returns, shipping, warranty, cancellations)")]
+        OrderRepo[("Order Repository (Customer Scoped)")]
+    end
+
+    subgraph Observability["Observability & Audit"]
+        AuditLogger["Rotating Audit Logger (logs/audit.log, 5MB x 5 backups)"]
+    end
+
+    Clients --> FastAPILayer
+    ChatRouter --> ChatService
+    ApprovalRouter --> OrderService
+    ApprovalRouter -.->|"Resume Thread"| ChatService
+
+    ChatService --> LangGraphAgent
+    LangGraphAgent <--> Checkpointer
+    AssistantNode --> ToolCondition
+    ToolCondition --> ToolNode
+    ToolNode --> AssistantNode
+
+    ToolNode --> OrderTools
+    ToolNode --> RAGRetriever
+    OrderTools --> OrderRepo
+    OrderTools -.->|"Exceeds $100"| HITLInterrupt
+    RAGRetriever --> PolicyDocs
+
+    ToolNode -.->|"Log args & duration"| AuditLogger
+    AssistantNode -.->|"Log tokens & speed"| AuditLogger
+```
+
+---
+
 ## Feature 1: Project Setup & Minimal FastAPI Service
 
 ### What I did
@@ -402,6 +464,89 @@ uv run pytest tests/test_eval.py -q
 
 ---
 
+## Streamlit Web UI
+
+A clean, minimalist web interface for interactive customer chat and human-in-the-loop approval management.
+
+### Features
+- Real-time customer chat with natural greeting handling and conversational memory.
+- Customer switcher (`C1` / `C2`) enforcing strict customer data isolation.
+- Manager Approval Center in the sidebar for reviewing and approving/rejecting refunds over $100.
+- Automatic fallback between live FastAPI endpoints (`http://127.0.0.1:8000`) and embedded in-process execution.
+
+### Run
+
+```bash
+# Start Streamlit application
+uv run streamlit run streamlit_app.py
+```
+
+---
+
+---
+
+## Feature 9: Architecture, Design Decisions & Engineering Learnings
+
+### 1. System Architecture & Component Interactions
+
+The system is designed with strict separation of concerns, defense-in-depth security, and human-in-the-loop controls:
+
+1. **Client & API Layer:**
+   - **Streamlit Web UI (`streamlit_app.py`):** Lightweight, reactive chat interface with customer context switching and manager approval controls.
+   - **FastAPI Routing (`main.py`):** Typed REST endpoints (`/chat`, `/approve`, `/approvals/pending`, `/health`) with Pydantic request/response validation.
+
+2. **Stateful Agent Layer (LangGraph):**
+   - **StateGraph:** Cyclic directed graph orchestrating turns between `assistant` and `tools` nodes.
+   - **MemorySaver Checkpointer:** Persists thread message history keyed by `thread_id` (`session_id`).
+   - **Customer Isolation:** `InjectedState("customer_id")` injects trusted customer context directly from runtime state, preventing model hallucination or parameter tampering. Cross-customer session access attempts are rejected with `403 Forbidden`.
+
+3. **Domain Tools & Policy RAG:**
+   - **Order Tools:** `get_order`, `list_orders`, `cancel_order`, `request_refund` interacting with the customer-scoped repository.
+   - **Policy RAG:** Hierarchical chunking of Markdown policy documents (`returns.md`, `shipping.md`, `cancellation.md`, `warranty.md`) indexed in ChromaDB with `sentence-transformers/all-MiniLM-L6-v2` embeddings. Enforces deterministic fallback: *"I don't know based on the available policies."* when similarity falls below 0.35.
+
+4. **Human-In-The-Loop (HITL) Approval:**
+   - High-value refunds (> $100) trigger LangGraph dynamic `interrupt()`.
+   - The thread execution pauses and status transitions to `refund_pending_approval`.
+   - Managers review pending approvals via `GET /approvals/pending` and submit decisions via `POST /approve`, which uses `Command(resume=...)` to resume execution.
+
+5. **Production Audit Logging:**
+   - `RotatingFileHandler` capped at 5 MB with 5 backups (25 MB max disk footprint).
+   - Tracks timestamp, session ID, customer ID, tool names, arguments, execution duration (ms), outcomes, tokens consumed, and generation speed (tokens/sec).
+
+---
+
+### 2. Model & RAG Design Decisions
+
+| Component | Choice | Rationale & Alternatives Considered |
+|-----------|--------|-------------------------------------|
+| **Primary LLM** | Groq `llama-3.3-70b-versatile` | Ultra-fast time-to-first-token (sub-300ms), reliable tool-calling schema adherence, and native `usage_metadata` token tracking. Alternatives supported: OpenAI (`gpt-4o-mini`), Anthropic (`claude-3-5-sonnet`), and offline mock models. |
+| **Embeddings** | `sentence-transformers/all-MiniLM-L6-v2` | Lightweight (80 MB), local CPU execution via PyTorch/ONNX with zero external API latency, predictable vector representations, and zero vendor lock-in. |
+| **Vector Store** | ChromaDB (Local persistent) | Embedded, zero-infrastructure vector store with native cosine distance scoring and metadata filtering. |
+| **Document Chunking** | Two-Stage Chunking (`MarkdownHeaderTextSplitter` + `RecursiveCharacterTextSplitter`) | Splitting by headers (`#`, `##`, `###`) preserves hierarchical section context in chunk metadata. Secondary recursive splitting (700 chars, 120 overlap) ensures chunks fit comfortably within embedding window while enabling exact `source › section` citations. |
+| **Relevance Floor** | Score threshold = 0.35 | Filters out weak semantic noise. When similarity drops below 0.35, the retriever returns empty, triggering the required exact refusal string: *"I don't know based on the available policies."*. |
+| **State Persistence** | LangGraph `MemorySaver` | Built-in in-memory checkpointer maintaining thread checkpoints across turns and enabling state suspension and resumption without third-party orchestrators. |
+
+---
+
+### 3. Engineering Learnings & Insights
+
+1. **Negative Prompt Boundaries vs. Pre-Trained LLM Priors:**
+   - Large language models inherently tend to answer general queries (e.g. geography, trivia, coding). Enforcing a customer support domain boundary requires explicit negative instructions in `SYSTEM_PROMPT` to prevent off-topic leaks while permitting natural courtesies (such as greetings).
+
+2. **Security Isolation via Injected State:**
+   - Exposing parameters like `customer_id` as regular tool arguments allows malicious or confused models to supply arbitrary IDs. Using LangGraph's `InjectedState("customer_id")` guarantees that tools execute strictly under the authenticated customer's scope.
+
+3. **Deterministic Testing of Non-Deterministic Agents:**
+   - Decoupling the evaluation runner (`cloudcommerce-eval`) from live external API keys through scripted mock models enables fast, repeatable CI test execution in under 20 milliseconds while verifying 100% of tool invocation logic, refusals, and token counting.
+
+4. **Resource-Safe Log Rotation:**
+   - Production agents must not allow logs to grow indefinitely. Standardizing on `RotatingFileHandler(maxBytes=5MB, backupCount=5)` ensures predictable bounded disk usage (< 25 MB total).
+
+5. **Streamlit Watcher Isolation on Linux:**
+   - In environments where file watchers collide with local repository trees, configuring `fileWatcherType = "none"` in `.streamlit/config.toml` eliminates `_MultiPathWatcher` crashes without sacrificing developer productivity.
+
+---
+
 ## Status
 
 - [x] Feature 1: Project setup and minimal FastAPI service
@@ -412,4 +557,4 @@ uv run pytest tests/test_eval.py -q
 - [x] Feature 6: Conversation memory and `POST /chat`
 - [x] Feature 7: Approval flow, audit log and failure handling
 - [x] Feature 8: Conversation eval suite
-- [ ] Feature 9: Final README with architecture diagram and learnings
+- [x] Feature 9: Final README with architecture diagram and learnings

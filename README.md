@@ -65,10 +65,52 @@ uv run pytest
 
 ---
 
+## Feature 2: Provider Abstractions
+
+### What I did
+
+- Added a typed `Settings` module using `pydantic-settings` v2
+- Built reusable factories around the official LangChain integrations:
+  - LLM: Groq, OpenAI, Anthropic
+  - Embeddings: Hugging Face (local), OpenAI, fake/offline
+- Shared LLM tuning for temperature, retries and timeout
+- Clear errors when a provider API key is missing
+- Cached settings and provider instances
+- Added offline provider tests and an optional live smoke test
+- Installed the Hugging Face embedding stack (CPU-only Torch locally)
+
+### Usage
+
+```python
+from app.providers import get_chat_model, get_embeddings
+
+answer = get_chat_model().invoke("Where is my order?").content
+vector = get_embeddings().embed_query("Where is my order?")
+```
+
+### Configure
+
+Switch providers in `.env`:
+
+```bash
+LLM_PROVIDER=groq            # groq | openai | anthropic
+EMBEDDING_PROVIDER=huggingface  # huggingface | openai | fake
+```
+
+### Test
+
+```bash
+uv run ruff check .
+uv run pytest
+RUN_PROVIDER_SMOKE=1 uv run pytest tests/test_provider_smoke.py -s
+```
+
+---
+
 ## Status
 
 - [x] Feature 1: Project setup and minimal FastAPI service
-- [ ] Feature 2: Provider abstractions (Groq + Hugging Face + offline fallback)
+- [x] Feature 2: Provider abstractions (Groq + Hugging Face + offline fallback)
 - [ ] Feature 3: Orders data, policy documents and RAG with citations
 - [ ] Feature 4: Order tools and safety guards
 - [ ] Feature 5: LangGraph agent

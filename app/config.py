@@ -1,22 +1,16 @@
-"""Centralised application settings loaded from environment / .env file.
-
-Uses pydantic-settings v2 (SettingsConfigDict) so every value can be
-overridden via an environment variable with **no prefix** — variable
-names match the field names exactly (case-insensitive).
-
-References
-----------
-- https://docs.pydantic.dev/latest/concepts/pydantic_settings/
+"""
+Centralised application settings loaded from environment / .env file.
 """
 
 from __future__ import annotations
 
 from enum import StrEnum
+from functools import lru_cache
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ── Provider enums ────────────────────────────────────────────────────
+
 
 class LLMProvider(StrEnum):
     """Supported LLM back-ends."""
@@ -31,10 +25,11 @@ class EmbeddingProvider(StrEnum):
 
     HUGGINGFACE = "huggingface"
     OPENAI = "openai"
-    FAKE = "fake"  # deterministic fake for CI / offline tests
+    FAKE = "fake"  # random offline vectors for CI / tests
 
 
 # ── Settings ──────────────────────────────────────────────────────────
+
 
 class Settings(BaseSettings):
     """Application-wide configuration.
@@ -86,8 +81,8 @@ class Settings(BaseSettings):
     # OpenAI embeddings
     openai_embedding_model: str = "text-embedding-3-small"
 
-    # Fake / deterministic embeddings (for tests)
-    fake_embedding_size: int = Field(default=384, description="Vector dimension for fake embeddings")
+    # Fake / offline embeddings (for tests)
+    fake_embedding_size: int = 384
 
     # ── RAG ────────────────────────────────────────────────────────────
     rag_chunk_size: int = 700
@@ -110,6 +105,7 @@ class Settings(BaseSettings):
     orders_max_retries: int = 2
 
 
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Return a cached ``Settings`` instance (reads .env once)."""
     return Settings()

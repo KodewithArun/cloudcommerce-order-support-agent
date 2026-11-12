@@ -2,10 +2,12 @@
 
 from fastapi import FastAPI
 
+from app.approvals import approvals_router
 from app.chat import chat_router
 
 app = FastAPI(title="CloudCommerce Order Support Agent")
 app.include_router(chat_router)
+app.include_router(approvals_router)
 
 
 @app.get("/")

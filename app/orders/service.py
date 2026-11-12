@@ -11,6 +11,14 @@ from app.orders.models import Order, OrderStatus
 from app.orders.repository import OrderRepository, get_order_repository
 
 
+class OrderServiceError(Exception):
+    """Base exception for order service operations."""
+
+
+class OrderServiceUnavailableError(OrderServiceError):
+    """Raised when the orders service or database is unavailable."""
+
+
 @dataclass(frozen=True)
 class ActionResult:
     """Outcome of an order-changing operation."""
@@ -25,6 +33,11 @@ class OrderService:
     def __init__(self, repository: OrderRepository, settings: Settings) -> None:
         self._repository = repository
         self._settings = settings
+        self.simulate_failure: bool = False
+
+    def _check_availability(self) -> None:
+        if self.simulate_failure:
+            raise OrderServiceUnavailableError("Orders service is temporarily unavailable.")
 
     def _today(self) -> date:
         if self._settings.reference_date:
@@ -37,14 +50,17 @@ class OrderService:
 
     def get_order(self, order_id: str, customer_id: str) -> Order | None:
         """Return one of the customer's orders, or ``None``."""
+        self._check_availability()
         return self._repository.get(order_id, customer_id)
 
     def list_orders(self, customer_id: str) -> list[Order]:
         """Return all orders belonging to the customer."""
+        self._check_availability()
         return self._repository.list_for(customer_id)
 
     def cancel_order(self, order_id: str, customer_id: str) -> ActionResult:
         """Cancel an order only while it is still processing."""
+        self._check_availability()
         order = self.get_order(order_id, customer_id)
         if order is None:
             return self._not_found(order_id)
@@ -62,6 +78,7 @@ class OrderService:
 
     def request_refund(self, order_id: str, customer_id: str) -> ActionResult:
         """Request a refund for a delivered order inside the return window."""
+        self._check_availability()
         order = self.get_order(order_id, customer_id)
         if order is None:
             return self._not_found(order_id)
@@ -90,12 +107,54 @@ class OrderService:
                 f"outside the {self._settings.return_window_days}-day return window.",
             )
 
+        if order.price > 100.0:
+            self._repository.set_status(order.order_id, OrderStatus.REFUND_PENDING_APPROVAL)
+            return ActionResult(
+                True,
+                f"Refund request for order {order.order_id} (${order.price:.2f}) exceeds $100 "
+                "and requires manager approval. Approval request submitted.",
+            )
+
         self._repository.set_status(order.order_id, OrderStatus.REFUND_REQUESTED)
         return ActionResult(
             True,
             f"Refund request for order {order.order_id} submitted. "
             "Refunds take 5-7 business days after processing.",
         )
+
+    def approve_refund(self, order_id: str, decision: str = "approve") -> ActionResult:
+        """Approve or reject a refund request (for store managers)."""
+        self._check_availability()
+        order = self._repository.get_by_id(order_id)
+        if order is None:
+            return ActionResult(False, f"No order {order_id} found.")
+        if order.status not in (OrderStatus.REFUND_PENDING_APPROVAL, OrderStatus.REFUND_REQUESTED):
+            return ActionResult(
+                False,
+                f"Order {order.order_id} has status '{order.status.value}' and does not require approval.",
+            )
+
+        if decision.lower() in ("approve", "approved"):
+            self._repository.set_status(order.order_id, OrderStatus.REFUNDED)
+            return ActionResult(
+                True,
+                f"Refund of ${order.price:.2f} for order {order.order_id} has been approved and processed.",
+            )
+
+        self._repository.set_status(order.order_id, OrderStatus.REFUND_REJECTED)
+        return ActionResult(
+            False,
+            f"Refund request for order {order.order_id} was rejected by management.",
+        )
+
+    def list_pending_approvals(self) -> list[Order]:
+        """List all orders currently awaiting refund approval."""
+        self._check_availability()
+        return [
+            order
+            for order in self._repository.all()
+            if order.status == OrderStatus.REFUND_PENDING_APPROVAL
+        ]
 
 
 @lru_cache(maxsize=1)

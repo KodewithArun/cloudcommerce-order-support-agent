@@ -16,6 +16,9 @@ class OrderStatus(StrEnum):
     DELIVERED = "delivered"
     CANCELLED = "cancelled"
     REFUND_REQUESTED = "refund_requested"
+    REFUND_PENDING_APPROVAL = "refund_pending_approval"
+    REFUNDED = "refunded"
+    REFUND_REJECTED = "refund_rejected"
 
 
 class Order(BaseModel):

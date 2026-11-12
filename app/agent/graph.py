@@ -25,6 +25,11 @@ def _default_tools() -> list[BaseTool]:
     return [*ORDER_TOOLS, search_policies]
 
 
+def default_tool_error_handler(error: Exception) -> str:
+    """Graceful error message returned to the agent when a tool encounters an outage or failure."""
+    return "The orders service is temporarily unavailable. Please try again in a few moments."
+
+
 def build_agent(
     *,
     llm: BaseChatModel | None = None,
@@ -45,7 +50,7 @@ def build_agent(
 
     graph = StateGraph(AgentState)
     graph.add_node("assistant", assistant)
-    graph.add_node("tools", ToolNode(agent_tools))
+    graph.add_node("tools", ToolNode(agent_tools, handle_tool_errors=default_tool_error_handler))
     graph.add_edge(START, "assistant")
     graph.add_conditional_edges(
         "assistant",

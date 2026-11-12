@@ -357,7 +357,47 @@ curl -X POST http://127.0.0.1:8000/approve \
 ### Test
 
 ```bash
-uv run pytest tests/test_feature7.py -q
+uv run pytest tests/test_approvalandlogs.py -q
+```
+
+---
+
+## Feature 8: Conversation Evaluation Suite
+
+### What I did
+
+- Created 9 multi-turn conversation scenarios in `app/eval/scenarios.py` with explicit expected outcomes:
+  1. **Order Status Inquiry:** Lookup order A100.
+  2. **Follow-Up Cancellation via Memory:** Multi-turn order check followed by "cancel it".
+  3. **Follow-Up Other Order Inquiry:** Multi-turn "what about my other order?".
+  4. **Refusal 1 — Cross-Customer Access:** Customer C1 asks for C2's order B200 (strictly denied without leaks).
+  5. **Refusal 2 — Cancel Delivered Order:** Refuses cancellation of delivered order A100.
+  6. **Refusal 3 — Refund Outside 14-Day Window:** Refuses refund for order B200 delivered > 14 days ago.
+  7. **Policy Q&A with Source Citations:** Queries return policy and checks for citations (`returns.md › Return window`).
+  8. **Refusal 4 — Uncovered Policy Fallback:** Asks about price matching and verifies deterministic fallback: *"I don't know based on the available policies."*.
+  9. **High-Value Refund Approval Flow:** Verifies refund over $100 pauses for manager approval.
+- Implemented `ConversationEvaluator` (`app/eval/runner.py`) to validate tool calls, keywords, refusals, latencies, and token usage.
+- Added executable CLI tool `cloudcommerce-eval` (`app.eval.run_tests:main`) configured via `pyproject.toml` scripts.
+- Formats reports as colorized ASCII summary tables with turn-by-turn tracking, latency, tokens, and exit codes for CI.
+- Added automated offline pytest test in `tests/test_eval.py`.
+
+### Run
+
+```bash
+# Run full evaluation suite
+uv run cloudcommerce-eval
+
+# Run with turn-by-turn verbose details
+uv run cloudcommerce-eval -v
+
+# Run against live configured LLM provider
+uv run cloudcommerce-eval --live
+```
+
+### Test
+
+```bash
+uv run pytest tests/test_eval.py -q
 ```
 
 ---
@@ -371,5 +411,5 @@ uv run pytest tests/test_feature7.py -q
 - [x] Feature 5: LangGraph agent
 - [x] Feature 6: Conversation memory and `POST /chat`
 - [x] Feature 7: Approval flow, audit log and failure handling
-- [ ] Feature 8: Conversation eval suite
+- [x] Feature 8: Conversation eval suite
 - [ ] Feature 9: Final README with architecture diagram and learnings

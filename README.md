@@ -402,6 +402,25 @@ uv run pytest tests/test_eval.py -q
 
 ---
 
+## Streamlit Web UI
+
+A clean, minimalist web interface for interactive customer chat and human-in-the-loop approval management.
+
+### Features
+- Real-time customer chat with natural greeting handling and conversational memory.
+- Customer switcher (`C1` / `C2`) enforcing strict customer data isolation.
+- Manager Approval Center in the sidebar for reviewing and approving/rejecting refunds over $100.
+- Automatic fallback between live FastAPI endpoints (`http://127.0.0.1:8000`) and embedded in-process execution.
+
+### Run
+
+```bash
+# Start Streamlit application
+uv run streamlit run streamlit_app.py
+```
+
+---
+
 ## Status
 
 - [x] Feature 1: Project setup and minimal FastAPI service

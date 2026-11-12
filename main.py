@@ -1,8 +1,11 @@
-"""Minimal FastAPI application for CloudCommerce."""
+"""FastAPI application for CloudCommerce Order Support."""
 
 from fastapi import FastAPI
 
+from app.chat import chat_router
+
 app = FastAPI(title="CloudCommerce Order Support Agent")
+app.include_router(chat_router)
 
 
 @app.get("/")

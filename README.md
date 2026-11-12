@@ -207,7 +207,8 @@ result = get_agent().invoke(
     {
         "messages": [HumanMessage(content="Where is order A100?")],
         "customer_id": "C1",
-    }
+    },
+    config={"configurable": {"thread_id": "session-1"}},
 )
 print(result["messages"][-1].content)
 ```
@@ -226,8 +227,69 @@ REFERENCE_DATE=        # optional ISO date for reproducible tests
 uv run pytest tests/test_orders.py tests/test_agent.py -q
 ```
 
-Refund approval, audit logging, order-service failures and conversation memory
-are implemented in later features.
+Refund approval, audit logging and order-service failures are implemented in
+later features.
+
+---
+
+## Feature 6: Conversation Memory and `POST /chat`
+
+### What I did
+
+- Integrated official LangGraph checkpoint persistence using `MemorySaver`
+- Configured conversation memory with `{"configurable": {"thread_id": session_id}}`
+- Supported multi-turn contextual follow-ups such as "cancel it" and "what about my other order?"
+- Added FastAPI `POST /chat` endpoint taking `session_id`, `customer_id`, and `message`
+- Enforced session-level customer isolation: requests attempting to access another customer's `session_id` are rejected with HTTP 403 Forbidden
+- Added typed `ChatRequest` and `ChatResponse` schemas
+- Added `ChatService` with clean message text extraction and dependency injection
+- Added 8 offline unit & integration tests covering single-turn, multi-turn memory, follow-up cancellations, session hijacking protection, and policy refusals
+
+### Endpoints
+
+| Method | Path | Request Body | Description |
+|--------|------|--------------|-------------|
+| POST | `/chat` | `{"session_id": "...", "customer_id": "...", "message": "..."}` | Send message to support agent with session memory |
+
+### Usage
+
+```bash
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "session-101",
+    "customer_id": "C1",
+    "message": "Where is my order A100?"
+  }'
+```
+
+Response:
+
+```json
+{
+  "session_id": "session-101",
+  "customer_id": "C1",
+  "response": "Your order A100 was delivered on 2026-11-01."
+}
+```
+
+Follow-up using the same `session_id`:
+
+```bash
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "session-101",
+    "customer_id": "C1",
+    "message": "Can you refund it?"
+  }'
+```
+
+### Test
+
+```bash
+uv run pytest tests/test_chat.py -q
+```
 
 ---
 
@@ -238,7 +300,7 @@ are implemented in later features.
 - [x] Feature 3: Orders data, policy documents and RAG with citations
 - [x] Feature 4: Order tools and safety guards
 - [x] Feature 5: LangGraph agent
-- [ ] Feature 6: Conversation memory and `POST /chat`
+- [x] Feature 6: Conversation memory and `POST /chat`
 - [ ] Feature 7: Approval flow, audit log and failure handling
 - [ ] Feature 8: Conversation eval suite
 - [ ] Feature 9: Final README with architecture diagram and learnings

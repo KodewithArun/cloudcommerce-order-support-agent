@@ -13,6 +13,7 @@ from app.rag.store import (
     build_policy_store,
     get_policy_retriever,
 )
+from app.rag.tools import search_policies, search_policy_text
 
 __all__ = [
     "UNKNOWN_ANSWER",
@@ -25,4 +26,6 @@ __all__ = [
     "get_policy_chain",
     "get_policy_retriever",
     "load_policy_documents",
+    "search_policies",
+    "search_policy_text",
 ]

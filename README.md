@@ -166,13 +166,78 @@ relevance scores, answers and citations interactively.
 
 ---
 
+## Feature 4 + 5: Order Tools and LangGraph Agent
+
+### What I did
+
+- Added typed `Order` and `OrderStatus` models
+- Added a JSON-backed, customer-scoped `OrderRepository`
+- Kept order changes in memory for the current process
+- Added `OrderService` guards:
+  - cancel only while status is `processing`
+  - refund only for delivered orders inside the 14-day return window
+  - cross-customer orders return a generic not-found message
+- Added LangChain order tools: `get_order`, `list_orders`, `cancel_order`,
+  `request_refund`
+- Added `search_policies`, which reuses the RAG retriever and returns excerpts
+  with `source › section` citations
+- Added an explicit LangGraph agent:
+  - `AgentState` with messages and trusted `customer_id`
+  - assistant and tool nodes
+  - `ToolNode` and `tools_condition` routing
+  - system prompt for policy citations, refusals and customer isolation
+- Injected `customer_id` from graph state with `InjectedState`, so the model
+  cannot choose or override it
+- Added offline order, tool and agent tests
+
+### Architecture
+
+```text
+START -> assistant -> tools_condition -> tools -> assistant -> END
+```
+
+### Usage
+
+```python
+from langchain_core.messages import HumanMessage
+
+from app.agent import get_agent
+
+result = get_agent().invoke(
+    {
+        "messages": [HumanMessage(content="Where is order A100?")],
+        "customer_id": "C1",
+    }
+)
+print(result["messages"][-1].content)
+```
+
+### Configure
+
+```bash
+ORDERS_PATH=data/orders.json
+RETURN_WINDOW_DAYS=14
+REFERENCE_DATE=        # optional ISO date for reproducible tests
+```
+
+### Test
+
+```bash
+uv run pytest tests/test_orders.py tests/test_agent.py -q
+```
+
+Refund approval, audit logging, order-service failures and conversation memory
+are implemented in later features.
+
+---
+
 ## Status
 
 - [x] Feature 1: Project setup and minimal FastAPI service
 - [x] Feature 2: Provider abstractions (Groq + Hugging Face + offline fallback)
 - [x] Feature 3: Orders data, policy documents and RAG with citations
-- [ ] Feature 4: Order tools and safety guards
-- [ ] Feature 5: LangGraph agent
+- [x] Feature 4: Order tools and safety guards
+- [x] Feature 5: LangGraph agent
 - [ ] Feature 6: Conversation memory and `POST /chat`
 - [ ] Feature 7: Approval flow, audit log and failure handling
 - [ ] Feature 8: Conversation eval suite

@@ -101,6 +101,7 @@ class Settings(BaseSettings):
     database_path: str = "data/agent.sqlite3"
     tool_log_path: str = "logs/tool_calls.jsonl"
     policy_docs_path: str = "data/policies"
+    orders_path: str = "data/orders.json"
 
     # ── Orders service resilience ─────────────────────────────────────
     orders_simulate_failure: str | None = None  # "timeout" | "error" | None

@@ -4,6 +4,91 @@
 
 An AI-powered order support agent for CloudCommerce, built with FastAPI and LangGraph. Features tool-based order management, policy-aware RAG with source citations, conversational memory, customer data isolation, and automated conversation testing.
 
+## Setup
+
+### Prerequisites
+
+- Python 3.11+ (the repo pins 3.12 in `.python-version`)
+- [uv](https://docs.astral.sh/uv/) for dependency management
+- Git
+- Optional: Docker / VS Code Dev Containers (see `Dev Container` below)
+
+### 1. Clone and install dependencies
+
+```bash
+git clone git@github.com:KodewithArun/cloudcommerce-order-support-agent.git
+cd cloudcommerce-order-support-agent
+uv sync
+```
+
+`uv sync` creates a local `.venv` and installs runtime and dev dependencies.
+Torch is resolved from the CPU-only PyTorch index configured in `pyproject.toml`.
+
+### 2. Configure environment variables
+
+```bash
+cp .env.example .env
+```
+
+Every setting has a safe local default. To use the live agent, set a provider
+key in `.env`:
+
+```bash
+LLM_PROVIDER=groq          # groq | openai | anthropic
+GROQ_API_KEY=your-key      # https://console.groq.com/keys
+```
+
+The default embeddings (`sentence-transformers/all-MiniLM-L6-v2`) run locally
+and need no API key; the model (~80 MB) is downloaded on first use. For
+offline/CI runs, set `EMBEDDING_PROVIDER=fake`.
+
+### 3. Run the API
+
+```bash
+uv run uvicorn main:app --reload
+```
+
+- API: `http://127.0.0.1:8000`
+- OpenAPI docs: `http://127.0.0.1:8000/docs`
+- Health check: `http://127.0.0.1:8000/health`
+
+### 4. Run the Streamlit UI
+
+In a separate terminal (with the API running):
+
+```bash
+uv run streamlit run streamlit_app.py
+```
+
+The UI is served at `http://127.0.0.1:8501`. It falls back to embedded
+in-process execution if the API is not reachable.
+
+### 5. Run the evaluation suite
+
+```bash
+uv run cloudcommerce-eval        # offline, deterministic
+uv run cloudcommerce-eval -v     # turn-by-turn details
+uv run cloudcommerce-eval --live # against the configured live LLM provider
+```
+
+### 6. Run tests and lint
+
+```bash
+uv run ruff check .
+uv run pytest
+```
+
+Tests are offline and do not require provider API keys.
+
+### Dev Container
+
+The repo includes a `.devcontainer/devcontainer.json` (Python 3.11 bookworm)
+that forwards port `8501` and launches Streamlit on attach. Open the project
+in VS Code or GitHub Codespaces and choose **Reopen in Container** to get a
+ready-to-use environment.
+
+---
+
 ## Requirements to achieve
 
 - LangGraph or Google ADK agent with tools: `get_order`, `list_orders`,
